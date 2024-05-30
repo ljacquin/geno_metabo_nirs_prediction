@@ -1,0 +1,16 @@
+data/genotype_data/*
+data/metabolome_data/*
+data/phenomic_data/*
+data/phenotype_data/*
+results/genomic_prediction/*
+results/graphics/all_projection_graphics/*
+results/graphics/genomic_graphics/*
+results/graphics/genomic_prediction_graphics/*
+results/graphics/metabolome_graphics/*
+results/graphics/metabolomic_prediction_graphics/*
+results/graphics/phenomic_graphics/*
+results/graphics/phenomic_prediction_graphics/*
+results/graphics/phenotype_graphics/*
+results/manuscript_graphics/*
+results/metabolomic_prediction/*
+results/phenomic_prediction/*
