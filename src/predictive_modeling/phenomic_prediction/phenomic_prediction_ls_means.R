@@ -62,17 +62,23 @@ output_pred_results_path <- "../../../results/phenomic_prediction/"
 output_graphics_path <- "../../../results/graphics/phenomic_graphics/"
 output_pred_graphics_path <- "../../../results/graphics/phenomic_prediction_graphics/"
 
+# file suffixe
+file_suffix <- "" 
+
 # define nirs type for analysis
-nirs_type_ <- "NIRJ-1" #"NIRJ5" # "NIRJ-1"
+nirs_type_ <- "NIRJ5" # "NIRJ5" # "NIRJ-1"
 
 # define selected blocs for experiment
-selected_blocs_ <- c("B2", "B8") #c("B4", "B6") # c("B2", "B8")
+selected_blocs_ <- c("B4", "B6") # c("B4", "B6") # c("B2", "B8")
 
 # should de-trending be applied to spectra ?
 apply_detrend_ <- T
 
 # should Savitzky-Golay filtering be applied to spectra ?
 apply_sg_filter_ <- T
+
+# should spectra data be corrected for bloc and position ?
+apply_bloc_pos_correction_ <- F
 
 # define derivative order, polynome order and number of support points for
 # Savitzky-Golay filtering
@@ -87,7 +93,7 @@ selected_traits_ <- c(
   "BLUPaudpc.eau.EUB04.19",
   "BLUPaudpc.eau.09BCZ14.prin19"
 )
-trait_ <- "BLUPaudpc.eau.EUB04.19" # "BLUPaudpc.eau.09BCZ14.prin19"
+trait_ <- "BLUPaudpc.eau.09BCZ14.prin19" # "BLUPaudpc.eau.09BCZ14.prin19"
 
 # define experimental vars
 experim_vars_ <- c(
@@ -171,23 +177,33 @@ fitted_col_names_ <- colnames(nirs_filtered_df)[
   (length(experim_vars_)
   + 1):ncol(nirs_filtered_df)
 ]
-waves_fitted_values_list <- lapply(
-  fitted_col_names_,
-  fit_geno_bloc_pos_and_extract,
-  df = nirs_filtered_df
-)
-waves_fitted_values_df <- do.call(
-  cbind,
-  waves_fitted_values_list
-)
-nirs_filtered_df <- cbind(
-  nirs_filtered_df[, experim_vars_],
-  waves_fitted_values_df
-)
-colnames(nirs_filtered_df) <- c(
-  experim_vars_,
-  fitted_col_names_
-)
+
+if (apply_bloc_pos_correction_) {
+  file_suffix <- "bloc_pos_corrected"
+  if (!file.exists(paste0(
+    nirs_dir_path,
+    nirs_type_, "_", "merged_wave_ls_mean_df",
+    file_suffix, ".csv"
+  ))) {
+    geno_wave_fit_val_list <- lapply(
+      fitted_col_names_,
+      fit_geno_wave_bloc_pos,
+      df = nirs_filtered_df
+    )
+    geno_wave_fit_val_df <- do.call(
+      cbind,
+      geno_wave_fit_val_list
+    )
+    nirs_filtered_df <- cbind(
+      nirs_filtered_df[, experim_vars_],
+      geno_wave_fit_val_df
+    )
+    colnames(nirs_filtered_df) <- c(
+      experim_vars_,
+      fitted_col_names_
+    )
+  }
+}
 
 # rename wave length vars associated to reflectance
 wave_len_orig_vars_ <- colnames(nirs_filtered_df)[-match(
@@ -204,7 +220,7 @@ colnames(nirs_filtered_df) <- c(
 # note : this is a long computation, hence the results should be saved and reused later
 if (!file.exists(paste0(
   nirs_dir_path,
-  nirs_type_, "_", "merged_wave_ls_mean_df.csv"
+  nirs_type_, "_", "merged_wave_ls_mean_df", file_suffix, ".csv"
 ))) {
   # define a list to save all data frames and perform ls-means for each wavelength,
   # by genotype, over all blocs
@@ -212,16 +228,16 @@ if (!file.exists(paste0(
   names(list_ls_mean_df_) <- wave_len_vars_
 
   for (wave_var_ in wave_len_vars_) {
-    lm_model <- lm(
-      formula(paste0(
-        wave_var_,
-        "~ geno + bloc"
-      )),
-      data = nirs_filtered_df
-    )
     wave_var_ls_means_df <- as.data.frame(
       lsmeans(
-        lm_model, ~geno
+        lm(
+          formula(paste0(
+            wave_var_,
+            "~ geno + bloc"
+          )),
+          data = nirs_filtered_df
+        ),
+        ~geno
       )
     )[, c("geno", "lsmean")]
     colnames(wave_var_ls_means_df) <- c("geno", wave_var_)
@@ -230,36 +246,41 @@ if (!file.exists(paste0(
 
   # merge list of data frames
   merged_wave_ls_mean_df <- Reduce(merge_by_geno, list_ls_mean_df_)
-  colnames(merged_wave_ls_mean_df) <- c("geno", wave_len_orig_vars_)
+  colnames(merged_wave_ls_mean_df) <- c("geno", wave_len_vars_)
 
   # transpose merged_wave_ls_mean_df data frame
   merged_wave_ls_mean_df <- as.data.frame(t(merged_wave_ls_mean_df))
   colnames(merged_wave_ls_mean_df) <- merged_wave_ls_mean_df[1, ]
   merged_wave_ls_mean_df <- merged_wave_ls_mean_df[-1, ]
   merged_wave_ls_mean_df <- cbind(
-    as.numeric(rownames(merged_wave_ls_mean_df)),
+    as.numeric(wave_len_orig_vars_),
     merged_wave_ls_mean_df
   )
   colnames(merged_wave_ls_mean_df)[1] <- "lambda"
+  rownames(merged_wave_ls_mean_df) <- NULL
   fwrite(merged_wave_ls_mean_df, file = paste0(
     nirs_dir_path,
     nirs_type_, "_",
-    "merged_wave_ls_mean_df.csv"
+    "merged_wave_ls_mean_df", file_suffix, ".csv"
   ))
 } else {
   merged_wave_ls_mean_df <- as.data.frame(fread(paste0(
     nirs_dir_path,
     nirs_type_, "_",
-    "merged_wave_ls_mean_df.csv"
+    "merged_wave_ls_mean_df", file_suffix, ".csv"
   )))
 }
+
+# apply scaling
+merged_wave_ls_mean_df[,2:ncol(merged_wave_ls_mean_df)] <- scale(
+  apply(merged_wave_ls_mean_df[,2:ncol(merged_wave_ls_mean_df)], 2, as.numeric))
 
 # save the graphical ls means of the spectra for each genotype accross blocs
 png(
   paste0(
     output_graphics_path,
     nirs_type_, "/",
-    nirs_type_, "_spectra_ls_means.PNG"
+    nirs_type_, "_spectra_ls_means", file_suffix, ".PNG"
   ),
   width = 1200, height = 600
 )
@@ -312,7 +333,7 @@ if (apply_detrend_) {
     paste0(
       output_graphics_path,
       nirs_type_, "/",
-      nirs_type_, "_spectra_ls_means_detrended.PNG"
+      nirs_type_, "_spectra_ls_means_detrended", file_suffix, ".PNG"
     ),
     width = 1200, height = 600
   )
@@ -338,7 +359,7 @@ if (apply_sg_filter_) {
   # apply derivative, for the chosen order, to the ls means of the spectra
   wave_trans_df <- t(as.matrix(
     apply(
-      scale(apply(wave_trans_df[, -1], 2, as.numeric)), 2, function(x) {
+      apply(wave_trans_df[, -1], 2, as.numeric), 2, function(x) {
         sgolayfilt(x,
           p = polynome_order_,
           n = num_supp_,
@@ -361,7 +382,9 @@ if (apply_sg_filter_) {
       nirs_type_,
       "_spectra_detrended_ls_means_and_sgolay_",
       vect_order_char_[deriv_order_],
-      "_order_filtered.PNG"
+      "_order_filtered",
+      file_suffix,
+      ".PNG"
     )
     graphic_title_ <- paste0(
       nirs_type_,
@@ -376,7 +399,9 @@ if (apply_sg_filter_) {
       nirs_type_,
       "_spectra_ls_means_sgolay_",
       vect_order_char_[deriv_order_],
-      "_order_filtered.PNG"
+      "_order_filtered",
+      file_suffix,
+      ".PNG"
     )
     graphic_title_ <- paste0(
       nirs_type_,
@@ -604,7 +629,7 @@ boxplots_pa_ <- boxplots_pa_ %>%
       "Phenomic prediction PA distributions of methods for ",
       trait_, ",\n based on ", nirs_type_, " ",
       ncol(wave_trans_vars_df), " wave lengths across ",
-      n_shuff_, " shuffling and ", k_folds_, "-folds scenarios"
+      n_shuff_, " shuffling and ", k_folds_, "-folds CV scenarios"
     ),
     yaxis = list(title = "Predictive ability (PA)", range = c(-1, 1)),
     legend = list(title = list(text = "Prediction method"))
@@ -615,7 +640,10 @@ saveWidget(boxplots_pa_, file = paste0(
   output_pred_graphics_path,
   nirs_type_, "/",
   trait_, "/pa_",
-  trait_, "_", ncol(wave_trans_vars_df), "_wave_lengths", ".html"
+  trait_, "_", ncol(wave_trans_vars_df),
+  "_wave_lengths",
+  file_suffix,
+  ".html"
 ))
 boxplots_pa_
 
@@ -628,8 +656,11 @@ fwrite(df_,
   file = paste0(
     output_pred_results_path,
     nirs_type_, "/",
-    "phenomic_pred_results_", ncol(wave_trans_vars_df), "_wave_lengths_",
-    trait_, ".csv"
+    "phenomic_pred_results_", ncol(wave_trans_vars_df),
+    "_wave_lengths_",
+    file_suffix,
+    trait_,
+    ".csv"
   ), row.names = T
 )
 
@@ -658,7 +689,7 @@ barplot_sv_orig <- plot_ly(df_sv_,
       "Counts of genotypes identified as support vectors across ",
       n_shuff_, " Gaussian SVR models, \n used for phenomic prediction of ",
       trait_, " across ", n_shuff_, " shuffling and ",
-      k_folds_, "-folds scenarios"
+      k_folds_, "-folds CV scenarios"
     ),
     xaxis = list(
       categoryorder = "total descending", title = "Genotype",
@@ -673,5 +704,7 @@ saveWidget(barplot_sv_orig, file = paste0(
   nirs_type_, "/",
   trait_, "/sv_for_",
   trait_, "_", ncol(wave_trans_vars_df),
-  "_wave_lengths", ".html"
+  "_wave_lengths",
+  file_suffix, 
+  ".html"
 ))

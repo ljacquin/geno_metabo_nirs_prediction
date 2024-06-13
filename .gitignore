@@ -14,3 +14,4 @@ results/graphics/phenotype_graphics/*
 results/manuscript_graphics/*
 results/metabolomic_prediction/*
 results/phenomic_prediction/*
+src/predictive_modeling/phenomic_prediction/phenomic_prediction_ls_means_old_.R

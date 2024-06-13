@@ -705,9 +705,26 @@ merge_by_geno <- function(df1, df2) {
 }
 
 # fit an lmer for geno, bloc and position
-fit_geno_bloc_pos_and_extract <- function(var_name, df) {
-  model <- lmer(df[, var_name] ~ 1
-    + (1 | geno) + bloc + position, data = df)
-  fitted_values <- fitted(model)
-  return(fitted_values)
+fit_geno_wave_bloc_pos <- function(var_name, df_) {
+  model <- lmer(
+    df_[, var_name] ~ 1
+      + (1 | geno) + bloc + position,
+    data = df_
+  )
+  adj_geno_wave_val_ <- ranef(model)$geno
+  adj_geno_wave_val_ <- cbind(
+    rownames(adj_geno_wave_val_),
+    adj_geno_wave_val_
+  )
+  colnames(adj_geno_wave_val_) <- c("geno", "adj_wave_value")
+  adj_geno_wave_val_expand_ <- merge(adj_geno_wave_val_,
+    df_,
+    by = "geno"
+  )
+  adj_geno_wave_val_expand_ <- adj_geno_wave_val_expand_[
+    match(df_$geno, adj_geno_wave_val_expand_$geno),
+    c("geno", "adj_wave_value")
+  ]
+  return(adj_geno_wave_val_expand_$adj_wave_value)
 }
+
